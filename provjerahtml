@@ -1,0 +1,799 @@
+<ng-container *ngIf="!isTouchDevice">
+    <div *ngIf="questionnaire.pollType!=='CHECKLISTE'" (click) = "onPressedBackButton($event)"
+        class="col-sm-12 padding-nullator quest-intro-back">
+        <img src="../assets/images/back-arrow.png" alt="back-icon" />
+        <p>{{'EXAMINEE_QUESTIONNAIRE.COMPLETE_BUTTON_TEXT' | translate}}</p>
+    </div>
+    <div *ngIf="questionnaire.pollType==='CHECKLISTE'" (click) = "onPressedBackButton($event)"
+        class="col-sm-12 padding-nullator quest-intro-back">
+        <img src="../assets/images/back-arrow.png" alt="back-icon" />
+        <p>{{'EXAMINEE_QUESTIONNAIRE.COMPLETE_BUTTON_TEXT' | translate}}</p>
+    </div>
+    <div class="col-sm-12 padding-nullator quest-steps-container" *ngIf="questionnaireLoaded">
+        <div class="col-sm-12 padding-nullator quest-steps-primary-nav">
+            <p>{{ patientPollService.pollType }}</p>
+            <p>{{questionnaire?.name[questionnaire.defaultLanguage] || questionnaire?.name }}</p>
+        </div>
+        <div class="col-sm-12 padding-nullator quest-steps-progress-bar">
+            <mat-progress-bar mode="determinate" [value]='progress'></mat-progress-bar>
+        </div>
+        <div class="col-sm-12 padding-nullator quest-steps-section">
+            <div (scroll)="onScroll($event)" id="scroll"
+                class="col-sm-12 padding-nullator quest-steps-scroll-container">
+                <form>
+                    <div *ngFor="let section of sections; let i = index">
+                        <div id="scroll-to-{{i}}"></div>
+                        <div class="quest-steps-sticky-toggler" id="{{i}}"></div>
+                        <div class="col-sm-6 padding-nullator" class="quest-steps-secondary-nav">
+                            <div class="visible-in-sticky">
+                                <div class="quest-steps-number-sections">
+                                </div>
+                                <h3 class="textEditorSmall">{{ section.name[questionnaire.defaultLanguage] || '' }}</h3>
+                            </div>
+                        </div>
+
+                        <div class="visible-in-scroll">
+                            <div class="quest-steps-number-sections">
+                                <span>{{'EXAMINEE_QUESTIONNAIRE.SECTION' | translate}} {{ ('0' + (i + 1)).slice(-2)}}
+                                    ({{section.majorQuestions}} {{section.majorQuestions > 1 ?
+                                    ('EXAMINEE_QUESTIONNAIRE.NUMBER_QUESTIONS' | translate) :
+                                    ('EXAMINEE_QUESTIONNAIRE.NUMBER_QUESTION' | translate)}}{{section.subQuestions ? ('
+                                    + ' + section.subQuestions + ' ' + (section.subQuestions > 1 ?
+                                    ('EXAMINEE_QUESTIONNAIRE.SUBQUESTIONS' | translate) :
+                                    ('EXAMINEE_QUESTIONNAIRE.SUBQUESTION' | translate))) : '' }})</span>
+                            </div>
+                            <h3 class="textEditor">{{section.name[questionnaire.defaultLanguage] || section.name}}</h3>
+                            <p [innerHTML]="section.description[questionnaire.defaultLanguage] || ''"></p>
+                        </div>
+
+                        <div class="quest-steps-section-text">
+                            <div class="col-sm-12 padding-nullator quest-steps-padding-container">
+                                <div class="col-sm-12 padding-nullator quest-steps-questions-container-text">
+                                    <div *ngFor="let question of section.questions; let i = index" id="{{question.id}}"
+                                        class="col-sm-12 padding-nullator quest-steps-elements">
+                                        <div class="quest-steps-section-fullWidth"
+                                            *ngIf="!questionIsMatrixChild(question) && showRelatedQuestion(section.questions, question, questionnaire.defaultLanguage)">
+                                            <div class="col-sm-8 padding-nullator quest-steps-questoion-title">
+                                                <h4
+                                                    [ngClass]='{"textTypeValidation-error" : question.required && isInvalidSliderValue(question.answer) && required}'>
+                                                    <span
+                                                        [ngClass]='{"textTypeValidation-error" : question.required && isInvalidSliderValue(question.answer) && required}'>{{question.ordinal}}</span>
+                                                    <span
+                                                        [ngClass]='{"textTypeValidation-error" : question.required && isInvalidSliderValue(question.answer) && required}'>{{
+                                                        question.questionData.question[questionnaire.defaultLanguage] ||
+                                                        ''}}</span><span
+                                                        [ngClass]='{"textTypeValidation-error" : question.required && isInvalidSliderValue(question.answer) && required}'
+                                                        *ngIf='question.required'>*</span>
+                                                </h4><span class='mandatory-reference' *ngIf='question.required'>*
+                                                    {{'EXAMINEE_QUESTIONNAIRE.MANDATORY' | translate}}</span>
+                                            </div>
+                                            <div *ngIf='question.required && isInvalidSliderValue(question.answer) && required'>
+                                                <p class='textTypeValidation-error'>
+                                                    {{'EXAMINEE_QUESTIONNAIRE.VALIDATION_REQUIRED' | translate}}</p>
+                                            </div>
+
+                                            <div *ngIf="question.questionData.description[questionnaire.defaultLanguage] && question.questionData.description[questionnaire.defaultLanguage].length > 0"
+                                                class="col-sm-8 padding-nullator quest-steps-questoion-description">
+                                                <p>{{question.questionData.description[questionnaire.defaultLanguage]}}
+                                                </p>
+                                            </div>
+                                            <div *ngIf="question.pollQuestionType === 'RADIO'"
+                                                class="col-sm-12 padding-nullator quest-steps-radio">
+                                                <div>
+                                                    <mat-radio-group aria-label="Select an option">
+                                                        <mat-radio-button
+                                                            *ngFor="let options of question.questionData.options"
+                                                            (change)='updateRadioAnswer(question, options, questionnaire.defaultLanguage, $event.source["_checked"])'
+                                                            [checked]='isRadioChecked(question, options)'
+                                                            name={{options.key}}
+                                                            [value]="options.value[questionnaire.defaultLanguage] || options.value">
+                                                            {{options.value[questionnaire.defaultLanguage] ||
+                                                            options.value}}</mat-radio-button>
+                                                    </mat-radio-group>
+                                                </div>
+                                            </div>
+
+                                            <div [ngClass]="{'quest-steps-checkbox': !question.parentQuestionId, 'quest-related-question': !!question.parentQuestionId }"
+                                                *ngIf="question.pollQuestionType === 'CHECKBOX' && showRelatedQuestion(section.questions, question, questionnaire.defaultLanguage)"
+                                                class="col-sm-12 padding-nullator">
+                                                <div *ngFor="let options of question.questionData.options">
+                                                    <mat-checkbox [checked]='isRadioChecked(question, options)'
+                                                        (ngModelChange)="calculateProgress()"
+                                                        (change)="updateCheckboxAnswer(question, options, $event.checked);">
+                                                        {{options.value[questionnaire.defaultLanguage] ||
+                                                        options.value}}</mat-checkbox>
+                                                </div>
+                                            </div>
+
+                                            <div [ngClass]="{'quest-steps-rating': !question.parentQuestionId, 'quest-related-question': !!question.parentQuestionId }"
+                                                *ngIf="question.pollQuestionType === 'RATING' && showRelatedQuestion(section.questions, question, questionnaire.defaultLanguage)"
+                                                class="col-sm-12 padding-nullator">
+                                                <div
+                                                    class="col-sm-10 padding-nullator quest-steps-circle-rating-container">
+                                                    <p>{{question.questionData.scaleBeginningText[questionnaire.defaultLanguage]
+                                                        || ''}}</p>
+                                                    <div [ngClass]="{'selected-rating' : options.selected}"
+                                                        *ngFor="let options of question.questionData.options"
+                                                        (click)="onChangeText($event, question)"
+                                                        class="col-sm-2 padding-nullator quest-steps-circle-rating">
+                                                        <p>{{options.value['default'] || options.value}}</p>
+                                                    </div>
+                                                    <p>{{question.questionData.scaleEndText[questionnaire.defaultLanguage]
+                                                        || ''}}</p>
+                                                </div>
+                                            </div>
+
+                                            <div *ngIf="question.pollQuestionType === 'RADIO_MATRIX'"
+                                                class="col-sm-12 padding-nullator">
+                                                <div class="col-sm-10 padding-nullator matrix-container">
+                                                    <div class="matrix-row">
+                                                        <p class="blank-2"
+                                                            *ngIf="question.questionData.matrixQuestions[0].questionData.options.length===2">
+                                                        </p>
+                                                        <p class="blank-3"
+                                                            *ngIf="question.questionData.matrixQuestions[0].questionData.options.length===3">
+                                                        </p>
+                                                        <p class="blank-4"
+                                                            *ngIf="question.questionData.matrixQuestions[0].questionData.options.length===4">
+                                                        </p>
+                                                        <p class="blank-5"
+                                                            *ngIf="question.questionData.matrixQuestions[0].questionData.options.length===5">
+                                                        </p>
+                                                        <p class="blank-6"
+                                                            *ngIf="question.questionData.matrixQuestions[0].questionData.options.length===6">
+                                                        </p>
+                                                        <p class="blank-7"
+                                                            *ngIf="question.questionData.matrixQuestions[0].questionData.options.length===7">
+                                                        </p>
+                                                        <div class="matrix-cell answer-cell"
+                                                            *ngFor="let matrixOption of question.questionData.matrixQuestions[0].questionData.options">
+                                                            <p class="answer-text">{{
+                                                                matrixOption.value[questionnaire.defaultLanguage] ||
+                                                                matrixOption.value}}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div *ngFor="let matrixChildQuestion of question.questionData.matrixQuestions"
+                                                        class="matrix-row">
+                                                        <span class="question-container">
+                                                            <p class="question-text">
+                                                                {{matrixChildQuestion.questionData.question[questionnaire.defaultLanguage]
+                                                                || matrixChildQuestion.questionData.question}}</p>
+                                                        </span>
+                                                        <div class="one-matrix-question">
+                                                            <mat-radio-group>
+                                                                <div class="matrix-cell">
+                                                                    <mat-radio-button
+                                                                        *ngFor="let options of matrixChildQuestion.questionData.options"
+                                                                        (change)='updateRadioAnswer(matrixChildQuestion, options, questionnaire.defaultLanguage, $event.source["_checked"])'
+                                                                        [checked]='isRadioChecked(matrixChildQuestion, options)'
+                                                                        [value]="options.value[questionnaire.defaultLanguage] || options.value">
+                                                                    </mat-radio-button>
+                                                                </div>
+                                                            </mat-radio-group>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div [ngClass]="{'quest-steps-date': !question.parentQuestionId, 'quest-related-question': !!question.parentQuestionId }"
+                                                *ngIf="question.pollQuestionExternalType === 'DATE' && showRelatedQuestion(section.questions, question, questionnaire.defaultLanguage)"
+                                                class="col-sm-12 padding-nullator">
+                                                <div class="col-sm-2 padding-nullator">
+                                                    <mat-form-field>
+                                                        <input (dateChange)='updateDateAnswer(question, $event)'
+                                                            matInput [value]='getDateValue(question)'
+                                                            [matDatepicker]="picker">
+                                                        <mat-datepicker-toggle matSuffix [for]="picker">
+                                                        </mat-datepicker-toggle>
+                                                        <mat-datepicker #picker></mat-datepicker>
+                                                    </mat-form-field>
+                                                </div>
+                                            </div>
+
+
+                                            <div [ngClass]="{'quest-steps-time-picker': !question.parentQuestionId, 'quest-related-question': !!question.parentQuestionId }"
+                                                *ngIf="question.pollQuestionExternalType === 'TIME' && showRelatedQuestion(section.questions, question, questionnaire.defaultLanguage)"
+                                                class=" col-sm-12 padding-nullator">
+                                                <div class="quest-step-time-icon col-sm-3 padding-nullator">
+                                                    <input [value]="getInputValue(question)"
+                                                        placeholder="{{'USER_DIARY.SELECT_TIME' | translate}}"
+                                                        aria-label="Select time" [ngxTimepicker]="fullTime"
+                                                        [format]="24" readonly>
+                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"
+                                                        width="24px" height="24px" ngxMaterialTimepickerToggleIcon>
+                                                        <path
+                                                            d="M15,3C8.373,3,3,8.373,3,15c0,6.627,5.373,12,12,12s12-5.373,12-12C27,8.373,21.627,3,15,3z M16,16H7.995 C7.445,16,7,15.555,7,15.005v-0.011C7,14.445,7.445,14,7.995,14H14V5.995C14,5.445,14.445,5,14.995,5h0.011 C15.555,5,16,5.445,16,5.995V16z" />
+                                                    </svg>
+                                                </div>
+                                                <ngx-material-timepicker (timeSet)='updateTimeAnswer(question, $event)'
+                                                    #fullTime></ngx-material-timepicker>
+                                            </div>
+
+                                            <div [ngClass]="{'quest-steps-input': !question.parentQuestionId, 'quest-related-question': !!question.parentQuestionId }"
+                                                *ngIf="question.pollQuestionType === 'INPUT' && question.pollQuestionExternalType != 'DATE' &&  question.pollQuestionExternalType != 'TIME' && showRelatedQuestion(section.questions, question, questionnaire.defaultLanguage)"
+                                                class="col-sm-12 padding-nullator">
+                                                <div class="col-sm-7 padding-nullator quest-step-input-field">
+                                                    <mat-form-field appearance="standard">
+                                                        <input (input)='inputTextQuestion($event, question)'
+                                                            [attr.maxlength]="maxInputLimit"
+                                                            [ngClass]='{"textTypeValidation-input-error": !validateInputQuestion(question.pollQuestionExternalType, question)}'
+                                                            [value]="getInputValue(question)" matInput
+                                                            placeholder="{{'EXAMINEE_QUESTIONNAIRE.PLACEHOLDER_TEXTAREA' | translate}}"
+                                                            (paste)="onPasteText($event, question)"
+                                                            (keyup)="onChangeText($event, question)">
+                                                            <span *ngIf="isMaxInputEnabled" class="inp-limit-text" [style.color]="getInpLimitTextColor(question.length)">
+                                                                <ng-container *ngIf="question.length >= maxInputLimit">{{'EXAMINEE_QUESTIONNAIRE.MAX_INPUT_LIMIT' | translate | placeholder : maxInputLimit}}</ng-container>
+                                                                <ng-container *ngIf="question.length < maxInputLimit">{{question.length ?  maxInputLimit - question.length : maxInputLimit }}/{{maxInputLimit}}</ng-container>
+                                                            </span>
+                                                        <p class='textTypeValidation'
+                                                            [ngClass]='{"textTypeValidation-error": !validateInputQuestion(question.pollQuestionExternalType, question)}'
+                                                            *ngIf="question.pollQuestionExternalType == 'INTEGER'">
+                                                            {{'QUESTIONAIRES.TEXT_VALIDATIONS.INTEGER' | translate }}
+                                                        </p>
+                                                        <p class='textTypeValidation'
+                                                            [ngClass]='{"textTypeValidation-error": !validateInputQuestion(question.pollQuestionExternalType, question)}'
+                                                            *ngIf="question.pollQuestionExternalType == 'DECIMAL'">
+                                                            {{'QUESTIONAIRES.TEXT_VALIDATIONS.DECIMAL' | translate }}
+                                                        </p>
+                                                    </mat-form-field>
+                                                </div>
+                                            </div>
+
+                                            <div [ngClass]="{'quest-steps-textarea': !question.parentQuestionId, 'quest-related-question': !!question.parentQuestionId }"
+                                                *ngIf="question.pollQuestionType === 'TEXT' && showRelatedQuestion(section.questions, question, questionnaire.defaultLanguage)"
+                                                class="col-sm-12 padding-nullator">
+                                                <div class="col-sm-7 padding-nullator">
+                                                    <mat-form-field appearance="standard">
+                                                        <textarea (input)='inputTextQuestion($event, question)'
+                                                            [attr.maxlength]="maxInputLimit"
+                                                            name='questionText'
+                                                            [ngClass]='{"textTypeValidation-input-error": !validateTextQuestion(question.pollQuestionTextType, question)}'
+                                                            [value]="getInputValue(question)" matInput
+                                                            placeholder="{{'EXAMINEE_QUESTIONNAIRE.PLACEHOLDER_TEXTAREA' | translate}}"
+                                                            (paste)="onPasteText($event, question)"
+                                                            (keyup)="onChangeText($event, question)"></textarea>
+                                                            <span *ngIf="isMaxInputEnabled" class="inp-limit-text" [style.color]="getInpLimitTextColor(question.length)">
+                                                                <ng-container *ngIf="question.length >= maxInputLimit">{{'EXAMINEE_QUESTIONNAIRE.MAX_INPUT_LIMIT' | translate | placeholder : maxInputLimit}}</ng-container>
+                                                                <ng-container *ngIf="question.length < maxInputLimit">{{question.length ?  maxInputLimit - question.length : maxInputLimit }}/{{maxInputLimit}}</ng-container>
+                                                            </span>
+                                                    </mat-form-field>
+                                                </div>
+                                            </div>
+
+                                            <div [ngClass]="{'quest-steps-drag-slider': !question.parentQuestionId, 'quest-related-question': !!question.parentQuestionId }"
+                                                *ngIf="question.pollQuestionType === 'SCORING_SCALE' && showRelatedQuestion(section.questions, question, questionnaire.defaultLanguage)"
+                                                class="col-sm-12 padding-nullator">
+                                                <div class="horizontal-scale-container"
+                                                    *ngIf="question.pollQuestionType==='SCORING_SCALE' && question.questionData.scoringScaleOrientation!=='VERTICAL'">
+                                                    <p class="horizontal-scale-begin col-sm-3">
+                                                        {{question?.questionData?.scaleBeginningText[questionnaire.defaultLanguage]
+                                                        || ''}}</p>
+                                                    <div class="col-sm-5 padding-nullator horizontal-scale">
+                                                        <mat-slider class="horizontal-scale-slider" (input)='onChangeText($event, question)'
+                                                            min={{question.questionData.scoringScaleMin}}
+                                                            max={{question.questionData.scoringScaleMax}} step="1"
+                                                            [value]="getSliderValue(question)" thumbLabel
+                                                            tickInterval="auto"></mat-slider>
+                                                    </div>
+                                                    <p class="horizontal-scale-end col-sm-3">
+                                                        {{question?.questionData?.scaleEndText[questionnaire.defaultLanguage]
+                                                        || ''}}</p>
+                                                </div>
+                                                <div class="vertical-scale-container"
+                                                    *ngIf="question.pollQuestionType==='SCORING_SCALE' && question.questionData.scoringScaleOrientation==='VERTICAL'">
+                                                        <div class="col-sm-2 begin-scale-container padding-nullator">
+                                                            <p class="vertical-scale-begin">
+                                                                {{question?.questionData?.scaleEndText[questionnaire.defaultLanguage]
+                                                                || ''}}</p>
+                                                        </div>
+                                                        <div class="padding-nullator vertical">
+                                                            <mat-slider
+                                                                (input)='onChangeText($event, question)'
+                                                                min={{question.questionData.scoringScaleMin}}
+                                                                max={{question.questionData.scoringScaleMax}} step="1"
+                                                                [value]="getSliderValue(question)" thumbLabel vertical
+                                                                tickInterval="auto"></mat-slider>
+                                                        </div>
+                                                        <div class="col-sm-2 end-scale-container padding-nullator">
+                                                            <p class="vertical-scale-end">
+                                                                {{question?.questionData?.scaleBeginningText[questionnaire.defaultLanguage]
+                                                                || ''}}</p>
+                                                        </div>
+                                                </div>
+                                            </div>
+
+                                            <div [ngClass]="{'quest-steps-select': !question.parentQuestionId, 'quest-related-question': !!question.parentQuestionId }"
+                                                *ngIf="question.pollQuestionType === 'DROPDOWN' && showRelatedQuestion(section.questions, question, questionnaire.defaultLanguage)"
+                                                class=" col-sm-12 padding-nullator">
+                                                <div class="col-sm-4 padding-nullator questionnaire-custom-dropdown">
+                                                    <mat-form-field appearance="standard">
+                                                        <mat-select [(value)]='question.answer'
+                                                            placeholder="{{'EXAMINEE_QUESTIONNAIRE.SELECT_AN_OPTION' | translate}}"
+                                                            (selectionChange)="onChangeText($event, question)">
+                                                            <mat-option
+                                                                *ngFor="let options of question.questionData.options"
+                                                                (click)="extractSelection(question, options, question.questionData.options)"
+                                                                [value]="options.value[questionnaire.defaultLanguage] || options.value">
+                                                                {{options.value[questionnaire.defaultLanguage] ||
+                                                                options.value}}</mat-option>
+                                                        </mat-select>
+                                                    </mat-form-field>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div *ngIf="i != sections.length-1" class="section-divider"></div>
+                        </div>
+                    </div>
+                    <div class="col-sm-12 padding-nullator quest-steps-buttomn-finish"
+                        *ngIf="questionnaire.pollType!=='CHECKLISTE'">
+                        <input type="button" [disabled]='savingAnswers' (click)="finishQuestionnaire()"
+                            mat-raised-button value="{{'EXAMINEE_QUESTIONNAIRE.FINISH_AND_SURVEY' | translate}}">
+                    </div>
+                </form>
+                <div class="col-sm-6 padding-nullator quest-steps-bottom-nav">
+                    <button [disabled]="sections?.length < 2" (click)="scrollToElementTop()" mat-raised-button>
+                        <i class="material-icons">keyboard_arrow_up</i>
+                    </button>
+                    <button [disabled]="sections?.length < 2" (click)="scrollToElementBottom()" mat-raised-button>
+                        <i class="material-icons">keyboard_arrow_down</i>
+                    </button>
+                    <div class="scroll-to-top" [ngClass]="{'show-scrollTop': windowScrolled}">
+                        <span (click)="scrollToTop()">{{'EXAMINEE_QUESTIONNAIRE.BACK_TO_TOP' | translate}}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</ng-container>
+
+<!--Touch device questionnaire start  -->
+<ng-container>
+    <div class="touch-device-container" *ngIf="isTouchDevice&&questionnaire.pollType!=='CHECKLISTE'">
+        <app-touchdevice-header [headerConfig]="headerSettings" [scoringConfig]="scoringSettings"
+            (onPressBack)="back()"></app-touchdevice-header>
+            <div class="error-alert" *ngIf="required&&isFormTouched">
+               <img src="../assets/images/caution-red.svg" alt="">
+               <span class="error-alert-text">{{'EXAMINEE_QUESTIONNAIRE.FILL_REQUIRED_FIELDS'|translate}}</span>
+            </div>
+        <div class="qn-content-container">
+            <div (scroll)="onScroll($event)" id="scroll" #panel
+                class="col-sm-12 padding-nullator quest-steps-scroll-container" [ngStyle]="{'height':required&&isFormTouched? 'calc(100vh - 36rem)':'calc(100vh - 27rem)'}">
+                <form>
+                    <div *ngFor="let section of sections; let i = index">
+                        <div id="scroll-to-{{i}}"></div>
+                        <div class="quest-steps-secondary-nav-touch-device "
+                            [ngStyle]="{'margin-top':i !== 0 ? '5rem' : '0rem' }">
+                            <div class="left">
+                                <p class="section-number">{{'EXAMINEE_QUESTIONNAIRE.SECTION' | translate}} {{ ('0' + (i+1)).slice(-2)}}</p>
+                            </div>
+                            <div class="center">
+                                <p class="section-title-font">{{ section.name[questionnaire.defaultLanguage] || '' }}
+                                </p>
+                            </div>
+                            <div class="right">
+                            </div>
+                        </div>
+                        <div class="section-content-container">
+                            <div class="col-sm-12 col-md-12 col-lg-12">
+                                <div class="col-sm-12 col-md-12 col-lg-12">
+                                    <div *ngFor="let question of section.questions; let i = index" id="{{question.id}}"
+                                        class="col-sm-12 col-md-12 col-lg-12 " [ngClass]="{'qn-ans-section': !questionIsMatrixChild(question)}">
+                                        <div [ngClass]="{'separator': !questionIsMatrixChild(question)&&i!==0&&showRelatedQuestion(section.questions, question, questionnaire.defaultLanguage),'separator-invisible':i===0}"></div>
+                                        <div
+                                            *ngIf="!questionIsMatrixChild(question) && showRelatedQuestion(section.questions, question, questionnaire.defaultLanguage)">
+                                            <div class="data-container">
+                                              <!--   <div class="separator" [ngClass]="{'separator-invisible': i===0}"></div> -->
+                                                <div class="qn-title-wrapper">
+                                                    <div class="col-sm-8 col-md-8 col-lg-8">
+                                                        <h4 class="question-title"
+                                                            [ngClass]='{"textTypeValidation-error" : question.required && isInvalidSliderValue(question.answer) && required}'>
+                                                            {{question.ordinal}} {{
+                                                            question.questionData.question[questionnaire.defaultLanguage]
+                                                            || ''}}
+                                                            <span class="red" *ngIf='question.required'>*</span>
+                                                        </h4>
+                                                    </div>
+                                                    <div class="col-sm-4 col-md-4 col-lg-4"
+                                                        *ngIf='question.required && isInvalidSliderValue(question.answer) && required'>
+                                                        <p class='validation-error'>
+                                                            {{'EXAMINEE_QUESTIONNAIRE.REQUIRED_FIELD' | translate}}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div *ngIf="question.questionData.description[questionnaire.defaultLanguage] && question.questionData.description[questionnaire.defaultLanguage].length > 0"
+                                                    class="col-sm-8 padding-nullator quest-steps-question-description">
+                                                    <p>{{question.questionData.description[questionnaire.defaultLanguage]}}
+                                                    </p>
+                                                </div>
+                                                <!-- Dropdown  -->
+                                                <div *ngIf="question.pollQuestionType === 'RADIO'"
+                                                    class="col-sm-12 col-md-12 col-lg-12 answer-field-wrapper">
+                                                    <mat-radio-group aria-label="Select an option">
+                                                        <div class="single-choice-container">
+                                                            <div class="options-wrapper">
+                                                                <div *ngFor="let options of question.questionData.options">
+                                                                    <mat-radio-button
+                                                                        (change)='updateRadioAnswer(question, options, questionnaire.defaultLanguage, $event.source["_checked"])'
+                                                                        [checked]='isRadioChecked(question, options)'
+                                                                        name={{options.key}}
+                                                                        [value]="options.value[questionnaire.defaultLanguage] || options.value">
+                                                                        {{options.value[questionnaire.defaultLanguage]
+                                                                        || options.value}}</mat-radio-button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </mat-radio-group>
+                                                </div>
+                                                <!--   CheckBox answer -->
+                                                <div *ngIf="question.pollQuestionType === 'CHECKBOX' && showRelatedQuestion(section.questions, question, questionnaire.defaultLanguage)"
+                                                    class="col-sm-12 col-md-12 col-lg-12 answer-field-wrapper quest-steps-checkbox">
+                                                    <div class="options-wrapper">
+                                                        <div *ngFor="let options of question.questionData.options">
+                                                            <mat-checkbox [checked]='isRadioChecked(question, options)'
+                                                                (ngModelChange)="calculateProgress()"
+                                                                (change)="updateCheckboxAnswer(question, options, $event.checked);">
+                                                                {{options.value[questionnaire.defaultLanguage] ||
+                                                                options.value}}</mat-checkbox>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div [ngClass]="{'quest-steps-rating': !question.parentQuestionId }"
+                                                    *ngIf="question.pollQuestionType === 'RATING' && showRelatedQuestion(section.questions, question, questionnaire.defaultLanguage)"
+                                                    class="col-sm-12 col-md-12 col-lg-12 answer-field-wrapper padding-nullator">
+                                                    <div
+                                                        class="col-sm-10 padding-nullator quest-steps-circle-rating-container">
+                                                        <p>{{question.questionData.scaleBeginningText[questionnaire.defaultLanguage]
+                                                            || ''}}</p>
+                                                        <div [ngClass]="{'selected-rating' : options.selected}"
+                                                            *ngFor="let options of question.questionData.options"
+                                                            (click)="onChangeText($event, question)"
+                                                            class="col-sm-2 padding-nullator quest-steps-circle-rating">
+                                                            <p>{{options.value['default'] || options.value}}</p>
+                                                        </div>
+                                                        <p>{{question.questionData.scaleEndText[questionnaire.defaultLanguage]
+                                                            || ''}}</p>
+                                                    </div>
+                                                </div>
+                                                <!-- Matrix input -->
+                                                <div *ngIf="question.pollQuestionType === 'RADIO_MATRIX'"
+                                                    class="col-sm-12 col-md-12 col-lg-12 answer-field-wrapper padding-nullator matrix-container">
+                                                    <div class="matrix-header">
+                                                        <div class="blank"></div>
+                                                        <div class="matrix-header-titles"
+                                                            *ngFor="let matrixOption of question.questionData.matrixQuestions[0].questionData.options">
+                                                            <span class="title">{{
+                                                                matrixOption.value[questionnaire.defaultLanguage] ||
+                                                                matrixOption.value}}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div class="underline"></div>
+                                                    <div class="matrix-content"
+                                                        *ngFor="let matrixChildQuestion of question.questionData.matrixQuestions">
+                                                        <span
+                                                            class="row-title">{{matrixChildQuestion.questionData.question[questionnaire.defaultLanguage]
+                                                            || matrixChildQuestion.questionData.question}}</span>
+                                                        <mat-radio-group style="display: flex;"
+                                                            [style.flex]="matrixChildQuestion.questionData.options.length">
+                                                            <div class="radio-button-wrapper"
+                                                                *ngFor="let options of matrixChildQuestion.questionData.options">
+                                                                <mat-radio-button
+                                                                    (change)='updateRadioAnswer(matrixChildQuestion, options, questionnaire.defaultLanguage, $event.source["_checked"])'
+                                                                    [checked]='isRadioChecked(matrixChildQuestion, options)'
+                                                                    [value]="options.value[questionnaire.defaultLanguage] || options.value">
+                                                                </mat-radio-button>
+                                                            </div>
+                                                        </mat-radio-group>
+                                                    </div>
+                                                </div>
+                                                <!-- Datepicker -->
+                                                <div [ngClass]="{'quest-steps-date': !question.parentQuestionId }"
+                                                    *ngIf="question.pollQuestionExternalType === 'DATE' && showRelatedQuestion(section.questions, question, questionnaire.defaultLanguage)"
+                                                    class="col-sm-12 col-md-12 col-lg-12 answer-field-wrapper padding-nullator">
+                                                    <div class="col-sm-2 padding-nullator field-date">
+                                                        <mat-form-field>
+                                                            <input readonly 
+                                                            (dateChange)='updateDateAnswer(question, $event)'
+                                                            matInput
+                                                            [value]='getDateValue(question)'
+                                                            [matDatepicker]="picker">
+                                                            <mat-datepicker-toggle matSuffix [for]="picker">
+                                                                <img class="calendar-icon" matDatepickerToggleIcon src="../assets/images/calendar.svg" alt="">
+                                                            </mat-datepicker-toggle>
+                                                            <mat-datepicker #picker></mat-datepicker>
+                                                        </mat-form-field>
+                                                    </div>
+                                                </div>
+                                                <!-- Timepicker -->
+                                                <div [ngClass]="{'quest-steps-time-picker': !question.parentQuestionId }"
+                                                    *ngIf="question.pollQuestionExternalType === 'TIME' && showRelatedQuestion(section.questions, question, questionnaire.defaultLanguage)"
+                                                    class=" col-sm-12 col-md-12 col-lg-12 answer-field-wrapper padding-nullator">
+                                                    <div class="quest-step-time-icon col-sm-3 padding-nullator">
+                                                        <input [value]="getInputValue(question)"
+                                                            placeholder="{{'USER_DIARY.SELECT_TIME' | translate}}"
+                                                            aria-label="Select time" [ngxTimepicker]="fullTime"
+                                                            [format]="24" readonly>
+                                                        <img class="clock-icon" src="../assets/images/clock.svg"  alt="">
+                                                        
+                                                    </div>
+                                                    <ngx-material-timepicker
+                                                        (timeSet)='updateTimeAnswer(question, $event)' #fullTime>
+                                                    </ngx-material-timepicker>
+                                                </div>
+                                                <div [ngClass]="{'quest-steps-input': !question.parentQuestionId }"
+                                                    *ngIf="question.pollQuestionType === 'INPUT' && question.pollQuestionExternalType != 'DATE' &&  question.pollQuestionExternalType != 'TIME' && showRelatedQuestion(section.questions, question, questionnaire.defaultLanguage)"
+                                                    class="col-sm-12 col-md-12 col-lg-12 answer-field-wrapper padding-nullator">
+                                                    <div class="col-sm-7 padding-nullator quest-step-input-field">
+                                                        <mat-form-field appearance="standard">
+                                                            <input (input)='inputTextQuestion($event, question)'
+                                                                [attr.maxlength]="maxInputLimit"
+                                                                [ngClass]='{"textTypeValidation-input-error": !validateInputQuestion(question.pollQuestionExternalType, question)}'
+                                                                [value]="getInputValue(question)" matInput
+                                                                placeholder="{{'EXAMINEE_QUESTIONNAIRE.PLACEHOLDER_TEXTAREA' | translate}}"
+                                                                (paste)="onPasteText($event, question)"
+                                                                (keyup)="onChangeText($event, question)" matInput
+                                                                placeholder="Placeholder">
+                                                                <span *ngIf="isMaxInputEnabled" class="inp-limit-text" [style.color]="getInpLimitTextColor(question.length)">
+                                                                    <ng-container *ngIf="question.length >= maxInputLimit">{{'EXAMINEE_QUESTIONNAIRE.MAX_INPUT_LIMIT' | translate | placeholder : maxInputLimit}}</ng-container>
+                                                                    <ng-container *ngIf="question.length < maxInputLimit">{{question.length ?  maxInputLimit - question.length : maxInputLimit }}/{{maxInputLimit}}</ng-container>
+                                                                </span>
+                                                                <div style="display: flex;">
+                                                                   
+                                                                <p class='textTypeValidation'
+                                                                    [ngClass]='{"textTypeValidation-error": !validateInputQuestion(question.pollQuestionExternalType, question)}'
+                                                                    *ngIf="question.pollQuestionExternalType == 'INTEGER'">
+                                                                    <img
+                                                                    class="info-icon"
+                                                                    src="../assets/images/info.svg"
+                                                                    alt=""
+                                                                />
+                                                                    {{'QUESTIONAIRES.TEXT_VALIDATIONS.INTEGER' | translate
+                                                                    }}</p>
+                                                                </div>
+                                                              
+                                                            <p class='textTypeValidation'
+                                                                [ngClass]='{"textTypeValidation-error": !validateInputQuestion(question.pollQuestionExternalType, question)}'
+                                                                *ngIf="question.pollQuestionExternalType == 'DECIMAL'">
+                                                                <img
+                                                                class="info-icon"
+                                                                src="../assets/images/info.svg"
+                                                                alt=""
+                                                            />
+                                                                {{'QUESTIONAIRES.TEXT_VALIDATIONS.DECIMAL' | translate
+                                                                }}</p>
+                                                        </mat-form-field>
+                                                    </div>
+                                                </div>
+                                                <div [ngClass]="{'quest-steps-textarea': !question.parentQuestionId }"
+                                                    *ngIf="question.pollQuestionType === 'TEXT' && showRelatedQuestion(section.questions, question, questionnaire.defaultLanguage)"
+                                                    class="col-sm-12 col-md-12 col-lg-12 answer-field-wrapper padding-nullator">
+                                                    <div class="col-sm-7 padding-nullator">
+                                                        <mat-form-field appearance="standard">
+                                                            <textarea (input)='inputTextQuestion($event, question)'
+                                                                [attr.maxlength]="maxInputLimit"
+                                                                name='questionText'
+                                                                [ngClass]='{"textTypeValidation-input-error": !validateTextQuestion(question.pollQuestionTextType, question)}'
+                                                                [value]="getInputValue(question)" matInput
+                                                                placeholder="{{'EXAMINEE_QUESTIONNAIRE.PLACEHOLDER_TEXTAREA' | translate}}"
+                                                                (paste)="onPasteText($event, question)"
+                                                                (keyup)="onChangeText($event, question)"></textarea>
+                                                                <span *ngIf="isMaxInputEnabled" class="inp-limit-text" [style.color]="getInpLimitTextColor(question.length)">
+                                                                    <ng-container *ngIf="question.length >= maxInputLimit">{{'EXAMINEE_QUESTIONNAIRE.MAX_INPUT_LIMIT' | translate | placeholder : maxInputLimit}}</ng-container>
+                                                                    <ng-container *ngIf="question.length < maxInputLimit">{{question.length ? maxInputLimit - question.length : maxInputLimit }}/{{maxInputLimit}}</ng-container>
+                                                                </span>
+                                                        </mat-form-field>
+                                                    </div>
+                                                </div>
+                                                <div [ngClass]="{'quest-steps-drag-slider': !question.parentQuestionId }"
+                                                    *ngIf="question.pollQuestionType === 'SCORING_SCALE' && showRelatedQuestion(section.questions, question, questionnaire.defaultLanguage)"
+                                                    class="col-sm-12 col-md-12 col-lg-12 answer-field-wrapper padding-nullator">
+                                                    <div *ngIf="question.pollQuestionType==='SCORING_SCALE' && question.questionData.scoringScaleOrientation!=='VERTICAL'"
+                                                        class="col-sm-12 col-md-5 col-lg-5">
+                                                        <div class="horizontal-scale-container">
+                                                            <div class="horizontal-scale-label-container">
+                                                                <p class="label1">
+                                                                    {{question?.questionData?.scaleBeginningText[questionnaire.defaultLanguage]
+                                                                    || ''}}</p>
+                                                            </div>
+                                                            <div class="slider-wrapper">
+                                                                <mat-slider
+                                                                    (input)='onChangeText($event, question)'
+                                                                    min={{question.questionData.scoringScaleMin}}
+                                                                    max={{question.questionData.scoringScaleMax}}
+                                                                    step="1" [value]="getSliderValue(question)"
+                                                                    thumbLabel tickInterval="auto"></mat-slider>
+                                                            </div>
+                                                            <div class="horizontal-scale-label-container">
+                                                                <p class="label1">
+                                                                    {{question?.questionData?.scaleEndText[questionnaire.defaultLanguage]
+                                                                    || ''}}</p>
+                                                            </div>
+															<p class="score-h-style">{{ 'ADMIN_EDITOR_QUESTIONNAIRE.SCORE' | translate }} :  {{question.answer}} / {{question.questionData.scoringScaleMax}}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div class="vertical-scale-container"
+                                                        *ngIf="question.pollQuestionType==='SCORING_SCALE' && question.questionData.scoringScaleOrientation==='VERTICAL'">
+                                                        <div class="col-sm-2 begin-scale-container padding-nullator">
+														<p class="vertical-scale-begin score-max" >{{ 'ADMIN_EDITOR_QUESTIONNAIRE.SCORE' | translate }} :  {{question.answer}}/{{question.questionData.scoringScaleMax}}</p>
+                                                            <p class="vertical-scale-begin score-v-style" >
+                                                                {{question?.questionData?.scaleEndText[questionnaire.defaultLanguage]
+                                                                || ''}}</p>
+                                                        </div>
+                                                        <div class="padding-nullator vertical">
+                                                            <mat-slider 
+                                                                (input)='onChangeText($event, question)'
+                                                                min={{question.questionData.scoringScaleMin}}
+                                                                max={{question.questionData.scoringScaleMax}} step="1"
+                                                                [value]="getSliderValue(question)" thumbLabel vertical
+                                                                tickInterval="auto"></mat-slider>
+                                                        </div>
+                                                        <div class="col-sm-2 end-scale-container padding-nullator">
+                                                            <p class="vertical-scale-end ">
+                                                                {{question?.questionData?.scaleBeginningText[questionnaire.defaultLanguage]
+                                                                || ''}}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div [ngClass]="{'quest-steps-select': !question.parentQuestionId }"
+                                                    *ngIf="question.pollQuestionType === 'DROPDOWN' && showRelatedQuestion(section.questions, question, questionnaire.defaultLanguage)"
+                                                    class=" col-sm-12 col-md-12 col-lg-12 answer-field-wrapper padding-nullator">
+                                                    <div class="col-sm-4 padding-nullator questionnaire-custom-dropdown">
+                                                        <mat-form-field appearance="standard">
+                                                            <mat-select [(value)]='question.answer'
+                                                                placeholder="{{'EXAMINEE_QUESTIONNAIRE.SELECT_AN_OPTION' | translate}}"
+                                                                (selectionChange)="onChangeText($event, question)">
+                                                                <mat-option
+                                                                    *ngFor="let options of question.questionData.options"
+                                                                    (click)="extractSelection(question, options, question.questionData.options)"
+                                                                    [value]="options.value[questionnaire.defaultLanguage] || options.value">
+                                                                    {{options.value[questionnaire.defaultLanguage] ||
+                                                                    options.value}}</mat-option>
+                                                            </mat-select>
+                                                        </mat-form-field>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div *ngIf="i != sections.length-1" class="section-divider"> </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <!-- Scroll Area -->
+            <!-- <div class="right-wrapper">
+                <scroll-arrow-button [scrollElement]="panel" [changeTrigger]="panel.scrollHeight"></scroll-arrow-button>
+            </div> -->
+            <!-- Scroll Area -->
+        </div>
+        <div class="footer-button">
+            <app-primary-button-variant (onButtonPress)="finishQuestionnaire()" [buttonConfig]="buttonSettings">
+            </app-primary-button-variant>
+        </div>
+    </div>
+</ng-container>
+
+<!--Touch device questionnaire End  -->
+
+<!--Touch device Checklist start  -->
+<ng-container *ngIf="isTouchDevice&&questionnaire.pollType==='CHECKLISTE'">
+    <div class="checklist-container">
+        <div class="page-title-container">
+            <div class="navigation-container" (click)="back()">
+                <div class="navigation border-1 center">
+                    <div  class="icon-left"></div>
+                </div>&nbsp;&nbsp;
+                <div class="text center">{{'EXAMINEE_QUESTIONNAIRE.CHECKLISTE' | translate}}</div>
+            </div>
+            <div class="page-title">
+                {{questionnaire?.name[questionnaire?.defaultLanguage] ?
+                questionnaire?.name[questionnaire?.defaultLanguage]:questionnaire?.name }}
+            </div>
+            <div class="right-content">
+                <div class="text color-base">{{'EXAMINEE_QUESTIONNAIRE.CREATED_ON' | translate}}:</div>
+                <div class="date-box">
+                    <div class="date color-base center">
+                        <div class="icon-calendar">{{questionnaire?.created | date:'dd.MM.yyyy'}}</div>
+                    </div>
+                    <div class="time color-base center">
+                        <div class="icon-clock">{{questionnaire?.created | date:'HH:mm'}} {{'EXAMINEE_QUESTIONNAIRE.UHR' | translate}}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="checklist-content">
+            <div class="tab-header">
+                <ng-container *ngIf="lastPageNo > 1">
+                    <div class="navigation navigate-left" (click)="prev()"
+                        [ngClass]="(pageNo > 1 && lastPageNo > 1)?'navigate-left-active':'navigate-left'">
+                    </div>
+                    <div class="navigation" (click)="next()"
+                        [ngClass]="pageNo < lastPageNo?'navigate-right-active':'navigate-right'">
+                    </div>
+                </ng-container>
+                <ul class="nav nav-tabs event-tab-main">
+                    <li [ngClass]="[activeTabIndex === i ? 'active':'inactive' , isHideSection(i) ? 'hide':'']"
+                        class="tab-button" *ngFor="let section of sections; let i = index" (click)="activateTab(i)">
+                        <div class="tab title">
+                            {{section.name[questionnaire.defaultLanguage]}}
+                        </div>
+                        <div class="center right-container">
+                            <ng-container *ngIf="calculateSectionProgress(i, section) === 100; else progressBar">
+                                <div class="circle-tick center">
+                                    <div class="icon-tick-lg"></div>
+                                </div>
+                            </ng-container>
+                            <ng-template #progressBar>
+                                <div class="progress" [attr.data-percentage]="sectionPercentage[i]">
+                                    <span class="progress-left">
+                                        <span class="progress-bar"></span>
+                                    </span>
+                                    <span class="progress-right">
+                                        <span class="progress-bar"></span>
+                                    </span>
+                                    <div class="progress-value">
+                                        {{getTotalAnswers(section)}}/{{getTotalQuestions(section)}}
+                                    </div>
+                                </div>
+                            </ng-template>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+            <div class="content" *ngIf="sections.length">
+                <div class="tab-content" id="tab-content">
+                    <div #tabContent id="scroll-div" class="checklist-sections" [ngClass]="{'scrollable':isScrollable(tabContent)}">
+                        <div class="tab-pane" [ngClass]="activeTabIndex === i ? 'active':'inactive'"
+                            *ngFor="let section of sections; let i = index">
+                            <div class="question-container">
+                                <div class="question-content" id="section{{i}}">
+                                    <div class="questions"
+                                        *ngFor="let question of section.questions;let questionIndex = index">
+                                        <div [ngClass]="{'quest-steps-checkbox': !question.parentQuestionId }"
+                                            *ngIf="question.pollQuestionType === 'CHECKBOX' && showRelatedQuestion(section.questions, question, questionnaire.defaultLanguage)"
+                                            class="padding-nullator">
+                                            <div class="question-text">
+                                                {{questionIndex+1}}. {{
+                                                question.questionData.question[questionnaire.defaultLanguage] || ''}}
+                                            </div>
+                                            <div class="option" *ngFor="let options of question.questionData.options">
+                                                <mat-checkbox class="checklist-option"
+                                                    [checked]='isRadioChecked(question, options)'
+                                                    (change)="updateCheckboxAnswer(question, options, $event.checked);calculateSectionProgress(i,section)">
+                                                    {{options.value[questionnaire.defaultLanguage] || options.value}}
+                                                </mat-checkbox>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Scroll Area -->
+                    <!-- <ng-container *ngIf="isScrollable(tabContent)">
+                        <div class="scrollbar-container">
+                            <scroll-arrow-button [scrollElement]="tabContent"></scroll-arrow-button>
+                        </div>
+                    </ng-container> -->
+                    <!-- Scroll Area -->
+                </div>
+                <div class="information-container clearfix" *ngIf="!isChecklistInfoClosed">
+                    <div class="info-text-row">
+                      <span class="info-text">
+                        <img class="information-icon i-icon" src="../assets/images/icon-status-info.png" alt="informative button"/>
+                          {{'EXAMINEE_QUESTIONNAIRE.CHECKLIST_SAVE_INFO' | translate}}
+                        </span>
+                    </div>
+                    <div class="info-icon-space">
+                      <span><img class="info-close-icon" src="../assets/images/status-close-icon.png" alt="close button" (click)="closeChecklistInfo()"/></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</ng-container>
+<!--Touch device Checklist End  -->
