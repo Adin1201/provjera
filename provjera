@@ -1,0 +1,1374 @@
+import {
+    Component,
+    ViewChild,
+    OnInit,
+    ElementRef,
+    EventEmitter,
+    Output,
+    HostListener,
+  } from "@angular/core";
+  import { Router, ActivatedRoute } from "@angular/router";
+  
+  import * as moment from "moment";
+  
+  import { RouterExtractor } from "@app/core/typescript/utils/RouterExtractor";
+  import {
+    IQuestion,
+    IOption,
+    ISection,
+    IQuestionnaire,
+  } from "./../../admin/typescript/abstract/IQuestionnaire";
+  import { ExamineeQuestionnaireService } from "./../typescript/services/ExamineeQuestionnaireService";
+  import { AdminQuestionnaireService } from "./../../admin/typescript/services/AdminQuestionnaireService";
+  import { QuestionType } from "./../../admin/typescript/config/QuestionnariesTypes";
+  import { AbstractAnswerQuestionnaire } from "../typescript/abstract/AbstractAnswerQuestionnaire";
+  import { TranslateService } from "@app/../translations/TranslateService";
+  import { CodingSystemService } from "@app/careplan/services/coding-system.service";
+  import { ENVIRONMENT } from "@app/core/typescript/config/Environment";
+  import { CoreUtils } from "@app/core/typescript/utils/CoreUtils";
+  import { HeaderConfig } from "../models/headerSettings";
+  import { ButtonConfig } from "../models/buttonSettings";
+  import { Location } from "@angular/common";
+  import { ScoringConfig } from "../models/scoringSettings";
+  import { MatDialog } from "@angular/material/dialog";
+  import { WarningDialogComponent } from "../../admin/warning-dialog/warning-dialog.component";
+  import { MatSnackBar } from "@angular/material";
+  
+  @Component({
+    selector: "app-quest-steps",
+    templateUrl: "./quest-steps.component.html",
+    styleUrls: [
+      "./quest-steps.component.scss",
+      "./checklist.scss",
+      "./quest-steps-touch-device.component.scss",
+    ],
+  })
+  export class QuestStepsComponent
+    extends AbstractAnswerQuestionnaire
+    implements OnInit
+  {
+    public questionnaireReady: boolean = false;
+    public questionType: any = QuestionType;
+    sections;
+    textTypeValue: string = "";
+    pollVotingActionId = null;
+    datum: Date = new Date();
+    currentIndex = 0;
+    restartQuestionairre = false;
+    getScroolDiv;
+    isScroll = false;
+    currentSection: any = 1;
+    pollType: any = "";
+    currentLang: string;
+    progressCompleted = false;
+    sendToKisEnabled: boolean =
+      ENVIRONMENT.MODULES.COMMON.SEND_QUESTIONNAIRE_TO_KIS;
+    content = "";
+    timeout = undefined;
+    pollSystem: any;
+    windowScrolled = false;
+    actionProgress: any = { isLoading: true }; // default action or any custom action for eg. actionProgress['save']
+    required: boolean = false;
+    savingAnswers: boolean;
+    questionnaireLoaded = false;
+    isTouchDevice: any;
+    activeTabIndex: number = 0;
+    pageNo: number = 1;
+    itemsPerPage: number;
+    lastPageNo: number;
+    totalSections: number;
+    sectionPercentage: any = [];
+    activeQnIndex: number = 0;
+    headerSettings: HeaderConfig;
+    buttonSettings: ButtonConfig;
+    scoringSettings: ScoringConfig;
+    questionnaireId: any;
+    isFormTouched:boolean = false
+    isMaxInputEnabled:boolean = ENVIRONMENT.QUESTIONNAIRE_INPUT_TEXT_LIMIT.ENABLED;
+    maxInputLimit:number = ENVIRONMENT.QUESTIONNAIRE_INPUT_TEXT_LIMIT.MAX_LIMIT;
+  
+    @Output() public readonly contentChanged = new EventEmitter<string>();
+  
+    @ViewChild("content", { static: false }) public contentWrapper: ElementRef;
+    @ViewChild("panel", { read: ElementRef, static: false })
+    public panel: ElementRef<any>;
+    @ViewChild("tabContent", { static: false }) public tabContent: ElementRef;
+    isChecklistInfoClosed: boolean;
+    isAdmin: boolean = false;
+    parentRouteUrl: string = '/users';
+    constructor(
+      private activatedRoute: ActivatedRoute,
+      public adminPollService: AdminQuestionnaireService,
+      public patientPollService: ExamineeQuestionnaireService,
+      private router: Router,
+      private codingSystemService: CodingSystemService,
+      public translateService: TranslateService,
+      private _location: Location,
+      private dialog: MatDialog,
+      private _snackBar: MatSnackBar
+    ) {
+      super(adminPollService);
+      this.isAdmin = this.patientPollService.isAdmin;
+      this.parentRouteUrl = this.isAdmin ? '/admins' : '/users';
+      this.translateService.subscribeOnLanguageChange((newLang) => {
+        if (newLang != this.currentLang) {
+          this.currentLang = newLang;
+          this.configureHeaderSettings();
+          if (this.questionnaire)
+            this.patientPollService.getQuestionnaireCategoryCodingSystem(
+              this.questionnaire.pollType
+            );
+          this.buttonSettings = {
+            label: this.translateService.instant(
+              "EXAMINEE_QUESTIONNAIRE.FINISH_AND_SURVEY"
+            ),
+            isShowIcon: false,
+          };
+        }
+      });
+      this.progress = 0;
+    }
+  
+    @HostListener("window:scroll", ["$event"])
+    onScroll(event) {
+      if ((event.target as HTMLElement).scrollTop === 0) {
+        this.windowScrolled = false;
+      } else {
+        this.windowScrolled = true;
+      }
+    }
+  
+    ngOnInit() {
+      RouterExtractor.extractParams(this.activatedRoute.parent, "id").subscribe(
+        (id: string) => {
+          this.actionProgress.isLoading = true;
+          this.codingSystemService.showLoadingScreen();
+          this.questionnaireId = id;
+          this.findQuestionnaire(id);
+        }
+      );
+  
+      function findAncestor(el, cls) {
+        if (!el.classList.contains(cls)) {
+          return findAncestor(el.parentElement, cls);
+        }
+        return el;
+      }
+  
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (entries[0].intersectionRatio === 0) {
+            entries[0].target.nextElementSibling.classList.add(
+              "sticky-children-visible"
+            );
+          } else {
+            entries[0].target.nextElementSibling.classList.remove(
+              "sticky-children-visible"
+            );
+          }
+        },
+        { threshold: [0, 1] }
+      );
+  
+      setTimeout(() => {
+        const titles = document.querySelectorAll(".quest-steps-sticky-toggler");
+        titles.forEach((title) => {
+          observer.observe(title);
+        });
+      }, 1000);
+  
+      this.checkTouchDevice();
+      this.setItemsPerPage();
+  
+      this.buttonSettings = {
+        label: this.translateService.instant(
+          "EXAMINEE_QUESTIONNAIRE.FINISH_AND_SURVEY"
+        ),
+        isShowIcon: false,
+      };
+  
+      this.scoringSettings = {
+        totalQuestions: 0,
+        completedQuestions: 0,
+        completionPercentage: 0,
+      };
+      this.configureHeaderSettings();
+    }
+  
+    configureHeaderSettings() {
+      this.headerSettings = {
+        isEnableBackButton: true,
+        BackTitle: this.translateService.instant(
+          "ADMIN_EDITOR_QUESTIONNAIRE.QUESTIONNAIRE_OVERVIEW"
+        ),
+        pageTitle: "",
+        pollType: "",
+        isEnableRightContent: false,
+      };
+    }
+  
+    // tslint:disable-next-line: use-lifecycle-interface9
+    ngAfterViewChecked(): void {
+      const getTextEditorValue = <any>(
+        (<unknown>document.getElementsByClassName("textEditor"))
+      );
+      for (let i = 0; i < getTextEditorValue.length; i++) {
+        const getTextEditorValueChild = getTextEditorValue[i].childNodes;
+        if (getTextEditorValueChild[0] === undefined) {
+          return null;
+        } else {
+          if (
+            getTextEditorValueChild[0] &&
+            getTextEditorValueChild[0].style &&
+            getTextEditorValueChild[0].style.cssText
+          ) {
+            getTextEditorValueChild[0].style.cssText =
+              'font-size: 21px; margin-bottom: 5px; color: #222; font-weight: 600; font-family: "Roboto Regular";';
+          }
+        }
+      }
+      const getBorderSection = <any>(
+        (<unknown>document.getElementsByClassName("section-divider"))
+      );
+      if (getBorderSection.length > 0) {
+        const getLastElement = getBorderSection.length - 1;
+        getBorderSection[getLastElement].style.borderBottom = "none !important";
+      }
+    }
+  
+    scrollToElementBottom() {
+      const activeHeaders = document.querySelectorAll(
+        ".quest-steps-secondary-nav"
+      );
+      const scroll = document.getElementById("scroll");
+      let activeScrollIndex = 0;
+      activeHeaders.forEach((h: any, index) => {
+        if (h.offsetTop === scroll.scrollTop) {
+          activeScrollIndex = index;
+        }
+      });
+      const nextElement = activeHeaders[activeScrollIndex + 1];
+      if (nextElement) {
+        const elem = nextElement.parentElement;
+        const boundingClient = elem.getBoundingClientRect();
+        const visibleHeaders = document.querySelectorAll(
+          ".sticky-children-visible"
+        );
+        const offset =
+          visibleHeaders.length === 0 || scroll.scrollTop === 0 ? 30 : 70;
+        scroll.scrollTo({
+          left: 0,
+          top: scroll.scrollTop + boundingClient.top - offset,
+          behavior: "smooth",
+        });
+      }
+    }
+  
+    scrollToElementTop() {
+      const activeHeaders = document.querySelectorAll(
+        ".quest-steps-secondary-nav"
+      );
+      const scroll = document.getElementById("scroll");
+      let activeScrollIndex = 0;
+      activeHeaders.forEach((h: any, index) => {
+        const diff = Math.floor(h.offsetTop) - Math.floor(scroll.scrollTop);
+        if (Math.abs(diff) <= 2) {
+          activeScrollIndex = index;
+        }
+      });
+      const nextElement = activeHeaders[activeScrollIndex - 1];
+      if (nextElement) {
+        const elem = nextElement.parentElement;
+        const boundingClient = elem.getBoundingClientRect();
+        const visibleHeaders = document.querySelectorAll(
+          ".sticky-children-visible"
+        );
+        const offset = visibleHeaders.length === 0 ? 44 : 96;
+        scroll.scrollTo({
+          left: 0,
+          top: scroll.scrollTop + boundingClient.top - offset,
+          behavior: "smooth",
+        });
+      }
+    }
+  
+    async extractSelection(
+      question: IQuestion,
+      selectedOption: any,
+      options: Array<IOption>
+    ) {
+      question.answer = selectedOption.value;
+      question.selection = [selectedOption.key];
+      await this.calculateProgress();
+    }
+  
+    extractRatingOptions(
+      question: IQuestion,
+      selectedOption: any,
+      options: Array<any>
+    ) {
+      options.map((option: any) => {
+        option.selected = false;
+      });
+      selectedOption.selected = !selectedOption.selected;
+      question.answer = selectedOption.value;
+      question.selection = [selectedOption.key];
+      this.calculateProgress();
+    }
+  
+    async calculateProgress() {
+      this.progress = await this.patientPollService.calculateProgress(
+        this.questionnaire
+      );
+      await this.calculateNumberOfQuestions();
+      if (this.isTouchDevice) {
+        await this.patientPollService.findQuestionnaireById(
+          this.questionnaireId,
+          (error: any, response: any) => {
+            if (!error) {
+              let repp = this.responseToData(response);
+              this.scoringSettings = {
+                totalQuestions: repp.answerDetails.total,
+                completedQuestions: repp.answerDetails.completed,
+                completionPercentage: this.progress,
+              };
+            }
+          }
+        );
+      }
+    }
+  
+    isRadioChecked(question, options) {
+      if (!this.previousAnswers) return false;
+      let answer = null;
+      this.previousAnswers.answers.forEach((element) => {
+        if (element.pollQuestionId == question.id) {
+          answer = element;
+        }
+      });
+      if (answer) return answer.selection.includes(options.key);
+      return false;
+    }
+  
+    checkProgress() {
+      return this.progress != 100;
+    }
+  
+    isDropdownChecked(question, options) {
+      let answer = null;
+      if (!this.previousAnswers) return "";
+      this.previousAnswers.answers.forEach((element) => {
+        if (element.pollQuestionId == question.id) {
+          answer = element;
+        }
+      });
+      if (answer) return answer.answerData;
+      return "";
+    }
+  
+    getSliderValue(question) {
+      var answer = null;
+      if (!this.previousAnswers) return "0";
+      this.previousAnswers.answers.forEach((element) => {
+        if (element.pollQuestionId == question.id) {
+          answer = element;
+        }
+      });
+      if (answer) return answer.answerData;
+      return question.questionData.scoringScaleMin - 1;
+    }
+
+    isInvalidSliderValue(value): boolean {
+      return (value === undefined || value === null || value === "");
+    }
+  
+    getInputValue(question) {
+      var answer = null;
+      if (!this.previousAnswers) return "";
+      this.previousAnswers.answers.forEach((element) => {
+        if (element.pollQuestionId == question.id) {
+          answer = element;
+        }
+      });
+      if (answer) return answer.answerData;
+      return "";
+    }
+  
+    updateTimeAnswer(question, value) {
+      question.answerData = value;
+      question.answer = question.answerData;
+      this.updateAnswersOnChange();
+      this.patientPollService.resetChildQuestionAnswerData(question, this.questionnaire, this.previousAnswers);
+      this.updateAnswers();
+      // this.calculateProgress();
+      this.markLastSeenQuestionnaire(question.pollId, question.id);
+    }
+  
+    getDateValue(question) {
+      var answer = null;
+      if (!this.previousAnswers) return "";
+      this.previousAnswers.answers.forEach((element) => {
+        if (element.pollQuestionId == question.id) {
+          answer = element;
+        }
+      });
+      if (answer) {
+        let dateString = answer.answerData;
+        let dates = dateString.split("/");
+        dateString = dateString[1] + "/" + dateString[0] + "/" + dateString[2];
+        return new Date(answer.answerData);
+      }
+      return "";
+    }
+  
+    findQuestionnairesAnswers(loading: boolean = true) {
+      this.patientPollService.findQuestionnairesAnswers(
+        this.questionnaire.pollId,
+        (error: boolean, response: any) => {
+          if (!error) {
+            this.previousAnswers = this.responseToData(response);
+            if (this.previousAnswers) {
+              this.patientPollService.intersectAnswersWithQuestionnaire(
+                this.questionnaire,
+                this.previousAnswers.answers
+              );
+              this.progress = this.patientPollService.calculateProgress(
+                this.questionnaire
+              );
+              this.restartQuestionairre =
+                this.patientPollService.startQuestionairreFromBeginning;
+              if (!this.restartQuestionairre) this.scrollToUnansweredQuestion();
+              this.calculateProgress();
+              this.setInputLimit();
+            }
+          }
+        },
+        loading
+      );
+    }
+  
+    calculateNumberOfQuestions() {
+      if (this.sections) {
+        this.sections.forEach((section) => {
+          let numberOfQuestions =
+            this.calculateNumberOfQuestionsBySection(section);
+          section.majorQuestions = numberOfQuestions.majorQuestions;
+          section.subQuestions = numberOfQuestions.subQuestions;
+        });
+        this.progressCompleted = this.progress == 100;
+      }
+    }
+  
+    scrollToUnansweredQuestion() {
+      setTimeout(() => {
+        if (this.patientPollService.whereToStartQuestionnary == -1) return;
+        if (this.patientPollService.whereToStartQuestionnary == 0) {
+          let idToScroll = this.findFirstUnansweredQuestion();
+          this.scrollToTargetAdjusted(idToScroll);
+        } else if (this.patientPollService.whereToStartQuestionnary == 1) {
+          if (this.questionnaire.lastSeenPollQuestionId) {
+            let idToScroll = this.questionnaire.lastSeenPollQuestionId;
+            this.scrollToTargetAdjusted(idToScroll);
+          }
+        }
+      }, 500);
+    }
+    findFirstUnansweredQuestion() {
+      try {
+        this.questionnaire.sections.forEach((section) => {
+          section.questions.forEach((question) => {
+            var exsists = false;
+            this.previousAnswers.answers.forEach((previous) => {
+              if (previous.pollQuestionId == question.id) {
+                exsists = true;
+              }
+            });
+            if (!exsists) {
+              if (question.showIf) {
+                let parentQuestion = section.questions.find(
+                  (el) => el.uuid == question.parentQuestionId
+                );
+                let potentialAnswer = this.previousAnswers.answers.find(
+                  (prev) => prev.pollQuestionId == parentQuestion.id
+                );
+                if (potentialAnswer) {
+                  if (Array.isArray(question.showIf)) {
+                    let array = JSON.parse(potentialAnswer.answerData);
+                    let arrayShowIfValues = [];
+                    let conditionOk = true;
+                    parentQuestion.questionData.options.forEach((el) => {
+                      if (question.showIf.includes(el.value))
+                        arrayShowIfValues.push(el);
+                    });
+                    arrayShowIfValues.forEach((el) => {
+                      if (!array.includes(el.key)) conditionOk = false;
+                    });
+                    if (conditionOk) throw question.id;
+                  } else if (question.showIf == potentialAnswer.answerData) {
+                    throw question.id;
+                  }
+                }
+              } else {
+                throw question.id;
+              }
+            }
+          });
+        });
+      } catch (id) {
+        return id;
+      }
+    }
+  
+    scrollToTargetAdjusted(id) {
+      var element = document.getElementById(id);
+      var headerOffset = 230;
+      var elementPosition = element.getBoundingClientRect().top;
+      var offsetPosition = elementPosition - headerOffset;
+      const scroller = document.getElementById("scroll");
+      scroller.scrollTo({
+        top: offsetPosition,
+        behavior: "smooth",
+      });
+    }
+  
+    inputTextQuestion(event: any, question) {
+      question.answerData = event.target.value;
+    }
+  
+    getRegex = (pollType: string) => {
+      switch (pollType) {
+        case "INTEGER":
+          return /^\d+$/;
+        case "DOUBLE":
+          return /^\d+\.\d{0,2}|\d+,\d{1,2}$/;
+        case "DECIMAL":
+          return /^\d*(\.\d+)?$/;
+        default:
+          return /.*/;
+      }
+    };
+  
+    validateTextQuestion(pollType: string, question) {
+      if (
+        question.answerData == "" ||
+        !question.answerData ||
+        pollType == "STRING" ||
+        !pollType
+      )
+        return true;
+      var regex = this.getRegex(pollType);
+      return regex.test(question.answerData);
+    }
+  
+    async submitAnswers(beforeOnLoad: boolean, callback: () => void) {
+      this.errorValidation = false;
+      let answersPrepared = this.patientPollService.prepareQuestionnaireAnswers(
+        this.questionnaire,
+        this.pollVotingActionId
+      );
+  
+      if (answersPrepared.answers.length) {
+        if (this.pollVotingActionId) {
+          this.savingAnswers = true;
+          this.patientPollService.updateQuestionnaireAnswers(
+            answersPrepared,
+            (error: boolean) => {
+              if (error) {
+                this.savingAnswers = false;
+                this.previousQuestion();
+                this.errorValidation = true;
+              }
+              if (!error && !beforeOnLoad) {
+                callback();
+              }
+            }
+          );
+        } else {
+          this.savingAnswers = true;
+          await this.patientPollService.createQuestionnaireAnswers(
+            answersPrepared,
+            (error: boolean, response: any) => {
+              if (!error && !beforeOnLoad) {
+                this.savingAnswers = false;
+                let poll = this.responseToData(response);
+                this.pollVotingActionId = poll.answerDetails.pollVotingActionId;
+              }
+            }
+          );
+        }
+      }
+    }
+  
+    generateCheckboxAnswerDataString(answers) {
+      let finalString = "[";
+      answers.forEach((el, index) => {
+        finalString += '"' + el.value + '"';
+        if (index < answers.length - 1) finalString += ",";
+      });
+  
+      finalString += "]";
+      return finalString;
+    }
+    updateRadioAnswer(question, option, defaultLanguage, checked) {
+      if (checked) {
+        question.selection = [option.key];
+        question.answerData = option.value[defaultLanguage];
+        question.answer = option.value[defaultLanguage];
+      } else {
+        question.selection = [];
+        question.answerData = "";
+      }
+  
+      this.patientPollService.resetChildQuestionAnswerData(question, this.questionnaire, this.previousAnswers);
+      this.updateAnswers();
+      this.markLastSeenQuestionnaire(question.pollId, question.id);
+    }
+  
+    updateCheckboxAnswer(question, option, checked) {
+      if (checked) {
+        if (!question.selection) question.selection = [];
+        if (!question.selection.includes(option.key))
+          question.selection.push(option.key);
+      } else {
+        question.selection = question.selection.filter(
+          (selection) => selection != option.key
+        );
+      }
+      let checkedValues = this.getCheckedValues(
+        question.selection,
+        question.questionData.options
+      ).map((v) => {
+        const vCopy = { ...v };
+        vCopy.value = vCopy.value[this.questionnaire.defaultLanguage];
+        return vCopy;
+      });
+      question.answerData = this.generateCheckboxAnswerDataString(checkedValues);
+      question.answer = JSON.parse(<string>question.answerData);
+      if (question.answerData == "[]") {
+        question.answer = null;
+        question.answerData = null;
+      }
+  
+      // this.calculateProgress();
+      this.patientPollService.resetChildQuestionAnswerData(question, this.questionnaire, this.previousAnswers);
+      this.updateAnswers();
+      this.markLastSeenQuestionnaire(question.pollId, question.id);
+    }
+    getCheckedValues(selection: any, options: any) {
+      let selectedValues = [];
+      if (!selection.length) return selectedValues;
+      selection.forEach((element) => {
+        selectedValues.push(options.find((el) => el.key == element));
+      });
+      return selectedValues;
+    }
+    showRelatedQuestion(questions, question, defaultLanguage) {
+      if (!question.showIf) return true;
+      //find parent question
+      let parentQuestion = questions.filter(
+        (quest) => quest.uuid == question.parentQuestionId
+      )[0];
+  
+      if (parentQuestion.answer && Array.isArray(parentQuestion.answer)) {
+        let parentQuestionAnswer = [];
+        parentQuestion.answer.forEach((answer) => {
+          parentQuestion.questionData.options.forEach((option) => {
+            if (parentQuestion.pollQuestionType === "CHECKBOX") {
+              if (defaultLanguage && option.value[defaultLanguage] == answer)
+                parentQuestionAnswer.push(option.key);
+            } else {
+              if (option.value == answer) parentQuestionAnswer.push(option.key);
+            }
+          });
+        });
+        if (!parentQuestionAnswer.length) {
+          question.answer = null;
+          this.deleteChildQuestionAnswers(questions, question);
+          return false;
+        }
+        let checker = (arr, target) =>
+          target.every((v) => {
+            return arr.includes(v);
+          });
+        if (checker(parentQuestionAnswer, question.showIf)) {
+          return true;
+        } else {
+          question.answer = null;
+          this.deleteChildQuestionAnswers(questions, question);
+          return false;
+        }
+      }
+  
+      if (parentQuestion.answer == question.showIf) {
+        return true;
+      } else {
+        const showIfVal = parentQuestion.questionData.options.filter((v) =>
+          Object.values(v.value).find((va) => va === parentQuestion.answer)
+        )[0];
+        if (showIfVal && showIfVal.key == question.showIf) {
+          return true;
+        }
+        return;
+        question.answer = null;
+        this.deleteChildQuestionAnswers(questions, question);
+        return false;
+      }
+    }
+  
+    deleteChildQuestionAnswers(questions, question) {
+      if (question.childQuestionsIds) {
+        question.childQuestionsIds.forEach((child) => {
+          questions.forEach((quest) => {
+            if (child == quest.uuid) {
+              quest.answer = null;
+              quest.answerData = null;
+              quest.selection = null;
+            }
+          });
+        });
+      }
+    }
+  
+    updateDateAnswer(question, event) {
+        let date = new Date(event.value);
+        const month = date.getMonth() + 1;
+        question.answerData = (month < 10 ? '0' + month : month) + '/' + (date.getDate() < 10 ? '0' + date.getDate() : date.getDate()) + '/' + date.getFullYear();
+        question.answer = question.answerData;
+        this.patientPollService.resetChildQuestionAnswerData(question, this.questionnaire, this.previousAnswers);
+        this.calculateProgress();
+        this.updateAnswers();
+        this.updateDateInput(question);
+        this.markLastSeenQuestionnaire(question.pollId, question.id);
+    }
+    updateDateInput(question: any) {
+      this.previousAnswers.answers.forEach((answer) => {
+        if (answer.pollQuestionId == question.id) {
+          answer.answerData = question.answerData;
+        }
+      });
+    }
+  
+    updateAnswersOnChange(): void {
+      this.submitAnswers(false, () => {});
+    }
+  
+    updateAnswersBeforeOnLoad(): void {
+      this.submitAnswers(true, () => {});
+    }
+
+    private openDialog() {
+      const dialogRef = this.dialog.open(WarningDialogComponent, {
+          autoFocus: false,
+          data: {}
+      });
+
+      dialogRef.afterClosed().subscribe(async (result) => {
+          if (result) {
+            await this.navigate(); // go to submit consent screen
+          }
+      });
+  }
+  
+  async finishQuestionnaire() {
+    this.isFormTouched = true;
+    
+    if(!this.checkQuestionAnswered()) {
+      this.openSnackBar(
+        this.translateService.instant("EXAMINEE_QUESTIONNAIRE.CHECK_INPUT"),
+        "OK"
+      );
+      return;
+    }
+    
+    if (!this.checkRequiredQuestions()) {
+      this.required = true;
+      return;
+    }
+    
+    this.required = false;
+  
+    if (this.isAdmin) {
+      this.openDialog();
+    } else {
+      if (this.checkRequiredQuestions()) {
+        await this.navigate();
+      }
+    }
+  }  
+    
+    finishQuestionnaireAnswers = () => {
+      if (!this.checkRequiredQuestions()) return;
+      let request = {
+        pollId: this.questionnaire.pollId,
+        pollVotingActionId: this.pollVotingActionId,
+        language: this.questionnaire.defaultLanguage || "",
+      };
+      this.patientPollService.finishQuestionnaireAnswers(request, () => {
+        this.navigate();
+      });
+    };
+
+    checkQuestionAnswered() {
+      for (let i = 0; i < this.questionnaire.sections.length; i++) {
+        for (
+          let j = 0;
+          j < this.questionnaire.sections[i].questions.length;
+          j++
+        ){
+          if(this.questionnaire.sections[i].questions[j].answer !== undefined && this.questionnaire.sections[i].questions[j].answer !== null &&
+             this.questionnaire.sections[i].questions[j].answer !== ''){
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    openSnackBar(message: string, action: string) {
+      this._snackBar.open(message, action, {
+        duration: 3500,
+        panelClass: ['snackbar-message']
+      });
+    }
+  
+    checkRequiredQuestions() {
+      let isValid = true;
+      for (let i = 0; i < this.questionnaire.sections.length; i++) {
+        for (
+          let j = 0;
+          j < this.questionnaire.sections[i].questions.length;
+          j++
+        ) {
+          if(this.questionnaire.sections[i].questions[j].pollQuestionType !==QuestionType.RADIO_MATRIX &&
+            (this.questionnaire.sections[i].questions[j].answerDetails !== null) &&
+            this.questionnaire.sections[i].questions[j].questionData.showCondition !== true) 
+          {
+                if((this.questionnaire.sections[i].questions[j].answer==(null||undefined)) &&
+                    (this.questionnaire.sections[i].questions[j].required == true))
+                {
+                    return isValid = false;
+                }
+          } else {
+                if((this.questionnaire.sections[i].questions[j].answer==null) && 
+                    (this.questionnaire.sections[i].questions[j].required == true) && 
+                    (this.questionnaire.sections[i].questions[j].answer!==undefined))
+                {
+                    isValid = false;
+                } else {
+                    isValid = this.matrixChildsAllHaveAnswers(
+                    this.questionnaire.sections[i].questions[j]);
+                }
+          }
+        }
+      }
+  
+      return isValid;
+    }
+    matrixChildsAllHaveAnswers(question: IQuestion): boolean {
+      var isValid = true;
+      if (question.required) {
+        question.questionData.matrixQuestions.forEach((matrixQuestion) => {
+          if (!matrixQuestion.answer) isValid = false;
+        });
+      }
+      return isValid;
+    }
+  
+    calculateNumberOfQuestionsBySection(section: any) {
+      let majorQuestions = 0;
+      let subQuestions = 0;
+      section.questions.forEach((question) => {
+        if (question.showIf) {
+          let parentQuestion = section.questions.find(
+            (el) => el.uuid == question.parentQuestionId
+          );
+          let potentialAnswer = this.previousAnswers.answers.find(
+            (prev) => prev.pollQuestionId == parentQuestion.id
+          );
+          if (potentialAnswer) {
+            if (Array.isArray(question.showIf)) {
+              let array = JSON.parse(potentialAnswer.answerData);
+              let arrayShowIfValues = [];
+              let conditionOk = true;
+              parentQuestion.questionData.options.forEach((el) => {
+                if (question.showIf.includes(el.value))
+                  arrayShowIfValues.push(el);
+              });
+              arrayShowIfValues.forEach((el) => {
+                if (!array.includes(el.key)) conditionOk = false;
+              });
+              if (conditionOk && !this.questionIsMatrixChild(question))
+                subQuestions++;
+            } else if (
+              question.showIf == potentialAnswer.answerData &&
+              !this.questionIsMatrixChild(question)
+            ) {
+              subQuestions++;
+            }
+          }
+        } else {
+          if (question.pollQuestionType !== QuestionType.RADIO_MATRIX) {
+            majorQuestions++;
+          }
+        }
+      });
+      return { majorQuestions, subQuestions };
+    }
+  
+    async findQuestionnaire(pollId: any) {
+      await this.patientPollService.findQuestionnaireById(
+        pollId,
+        (error: any, response: any) => {
+          if (!error) {
+            this.questionnaire = this.responseToData(response);
+          //  this.calculateProgress();
+            this.patientPollService.getQuestionnaireCategoryCodingSystem(
+              this.questionnaire.pollType
+            );
+            if (this.questionnaire && this.questionnaire.sections) {
+              this.questionnaire.sections.sort(
+                (a: any, b: any) => a.index - b.index
+              );
+            }
+            if (this.adminPollService.questionnaireReady(this.questionnaire)) {
+              this.questionnaire = this.adminPollService.extractFromMobileFormat(
+                this.questionnaire
+              );
+              this.questionnaire = this.adminPollService.extractFromMobileFormat(
+                this.questionnaire
+              );
+              this.questionnaire.sections.forEach(
+                (section: any, index: number) => {
+                  this.adminPollService.orderQuestionsByIndex(section);
+                  section.questions
+                    .filter(
+                      (q) => q.pollQuestionType == QuestionType.SCORING_SCALE
+                    )
+                    .map((q) => {
+                      let startRange = q.questionData.scoringScaleMin;
+                      if (startRange == null || startRange == undefined)
+                        startRange = 0;
+  
+                      if (!q.questionData.scoringRangeStart)
+                        q.questionData.scoringRangeStart = [];
+                      q.questionData.scoringRangeStart.push(startRange - 1);
+                    });
+                  if (index === this.questionnaire.sections.length - 1) {
+                    this.findQuestionnairesAnswers();
+                    this.sections = this.questionnaire.sections;
+                    this.currentQuestion = this.lastProcessedQuestion;
+                    if (
+                      this.questionnaire.answerDetails.hasOwnProperty(
+                        "pollVotingActionId"
+                      )
+                    ) {
+                      this.pollVotingActionId =
+                        this.questionnaire.answerDetails.pollVotingActionId;
+                    }
+                    this.questionnaireReady = true;
+                    let parentUrl = RouterExtractor.combineURLs(
+                      RouterExtractor.extractURL(this.activatedRoute.parent)
+                    );
+                    this.proceedToUrl = 
+                    this.isAdmin? "/admins/questionnaires/" + parentUrl +  "completed"  :
+                    "/users/questionnaires/" + parentUrl + "completed";
+                    this.groupMatrixQuestions(this.questionnaire);
+  
+                    if (this.questionnaire.pollType == "CHECKLISTE") {
+                      this.configPages();
+                    }
+                  }
+                }
+              );
+            }
+            this.questionnaireLoaded = true;
+            if (this.questionnaire.defaultLanguage) {
+              this.headerSettings = {
+                isEnableBackButton: true,
+                BackTitle: this.translateService.instant(
+                  "ADMIN_EDITOR_QUESTIONNAIRE.QUESTIONNAIRE_OVERVIEW"
+                ),
+                pageTitle:
+                  this.questionnaire.name[this.questionnaire.defaultLanguage] ||
+                  this.questionnaire.defaultName,
+                pollType: this.questionnaire.pollType,
+                isEnableRightContent: true,
+              };
+  
+              this.questionnaire.defaultLanguage =
+                this.patientPollService.quizDefaultLanguage.get(
+                  this.questionnaire.pollId
+                ) || this.questionnaire.defaultLanguage;
+            }
+          }
+        }
+      );
+    }
+    groupMatrixQuestions(questionnaire: IQuestionnaire) {
+      //find all matrixQuestions
+      var matrixQuestions = [];
+      questionnaire.sections.forEach((section) => {
+        section.questions.forEach((sectionQuestion) => {
+          if (sectionQuestion.pollQuestionType === QuestionType.RADIO_MATRIX)
+            matrixQuestions.push(sectionQuestion);
+        });
+      });
+      //find all child questions of all matrix questions
+      matrixQuestions.forEach((matrixQuestion) => {
+        var matrixChildQuestions = [];
+        questionnaire.sections.forEach((section) => {
+          section.questions.forEach((sectionQuestion) => {
+            if (sectionQuestion.pollQuestionType === QuestionType.RADIO) {
+              if (sectionQuestion.parentQuestionId === matrixQuestion.uuid) {
+                matrixChildQuestions.push(sectionQuestion);
+              }
+            }
+          });
+        });
+        for (var i = 0; i < matrixChildQuestions.length; i++) {
+          matrixQuestion.questionData.matrixQuestions[i] =
+            matrixChildQuestions[i];
+        }
+      });
+    }
+  
+    async navigate() {
+      if (this.questionnaire.sendToKIS) {
+        if (this.questionnaire.pollType == "SCORING")
+          this.router.navigate([
+          this.parentRouteUrl + `/questionnaires/scoring/${this.questionnaire.pollId}/submit/${this.pollVotingActionId}`,
+          ]);
+        else if (this.questionnaire.pollType == "CHECKLISTE")
+          this.router.navigate([
+          this.parentRouteUrl + `/questionnaires/checkliste/${this.questionnaire.pollId}/complete/${this.pollVotingActionId}`,
+          ]);
+        else
+          this.router.navigate([
+          this.parentRouteUrl + `/questionnaires/anamnese/${this.questionnaire.pollId}/submit/${this.pollVotingActionId}`,
+          ]);
+      } else {
+        if (!this.pollVotingActionId) return;
+        let request = {
+          pollId: this.questionnaire.pollId,
+          pollVotingActionId: this.pollVotingActionId,
+          consent: "false",
+          language: this.questionnaire.defaultLanguage || "",
+        };
+        await this.patientPollService.finishQuestionnaireAnswers(request, () => {
+          if (this.questionnaire.pollType == "SCORING")
+            this.router.navigate([
+            this.parentRouteUrl + `/questionnaires/scoring/${this.questionnaire.pollId}/complete/${this.pollVotingActionId}`,
+            ]);
+          else if (this.questionnaire.pollType == "CHECKLISTE")
+            this.router.navigate([
+            this.parentRouteUrl + `/questionnaires/checkliste/${this.questionnaire.pollId}/complete/${this.pollVotingActionId}`,
+            ]);
+          else
+            this.router.navigate([
+            this.parentRouteUrl + `/questionnaires/anamnese/${this.questionnaire.pollId}/complete/${this.pollVotingActionId}`,
+            ]);
+        });
+      }
+    }
+  
+    validateInputQuestion(pollType: string, question) {
+      if (
+        question.answerData == "" ||
+        !question.answerData ||
+        pollType == "STRING" ||
+        !pollType ||
+        question.pollQuestionType != "INPUT"
+      )
+        return true;
+      var regex = this.getRegex(pollType);
+      return regex.test(question.answerData);
+    }
+  
+    onPasteText(event, question) {
+      if(this.isMaxInputEnabled){
+        this.timeout = setTimeout(async () => {
+          let inputString = event.target ? event.target.value : event.value;
+          question.length=inputString.length;
+        },300);
+      }
+    }
+
+    onChangeText(event, question) {
+      if(this.isMaxInputEnabled && (question.pollQuestionType == QuestionType.INPUT || question.pollQuestionType == QuestionType.TEXT)){
+        let inputString = event.target ? event.target.value : event.value;
+        question.length=inputString.length;
+      }
+      if (this.timeout || typeof this.timeout !== "undefined") {
+        clearTimeout(this.timeout);
+        this.timeout = undefined;
+      }
+      this.timeout = setTimeout(async () => {
+        if (
+          !this.validateInputQuestion(question.pollQuestionExternalType, question)
+        ) {
+          question.answer = null;
+          return;
+        }
+  
+        question.answer = event.target ? event.target.value : event.value;
+        let answerData = event.target ? event.target.value : event.value;
+  
+        switch (question.pollQuestionType) {
+          case QuestionType.RATING:
+            answerData = event.target.textContent;
+            question.questionData.options.map((option: IOption) => {
+              if (option.value["default"] == answerData) {
+                option.selected = true;
+                question.answer = answerData;
+              } else {
+                option.selected = null;
+              }
+            });
+            question.selection = [answerData];
+            break;
+          case QuestionType.SCORING_SCALE:
+            question.answer = answerData;
+            if (answerData) {
+              question.questionData.scoringRangeStart = [
+                parseFloat(question.answer.toString()),
+              ];
+            }
+            break;
+          default:
+            question.answer = answerData;
+        }
+  
+        // this.calculateProgress();
+        this.patientPollService.resetChildQuestionAnswerData(question, this.questionnaire, this.previousAnswers);
+        this.updateAnswers();
+        this.markLastSeenQuestionnaire(question.pollId, question.id);
+      }, 300);
+    }
+  
+    markLastSeenQuestionnaire(pollId: string, questionId: string) {
+      this.patientPollService.markLastSeenQuestionnaire(
+        pollId,
+        questionId,
+        (err, res) => {}
+      );
+    }
+    questionIsMatrixChild(question) {
+      var found = false;
+      this.questionnaire.sections.forEach((section) => {
+        section.questions.forEach((sectionQuestion) => {
+          if (sectionQuestion.pollQuestionType === QuestionType.RADIO_MATRIX) {
+            if (sectionQuestion.uuid === question.parentQuestionId) {
+              found = true;
+            }
+          }
+        });
+      });
+      return found;
+    }
+    async updateAnswers(restart: boolean = false) {
+      this.isFormTouched = false;
+      let answersPrepared = this.patientPollService.prepareQuestionnaireAnswers(
+        this.questionnaire,
+        this.pollVotingActionId
+      );
+      answersPrepared.language = this.questionnaire.defaultLanguage;
+      if (restart) {
+        answersPrepared.answers = [];
+        if (this.pollVotingActionId) {
+          this.savingAnswers = true;
+          await this.patientPollService.updateQuestionnaireAnswers(
+            answersPrepared,
+            (error: boolean) => {
+              if (!error) {
+                this.savingAnswers = false;
+              }
+            }
+          );
+          this.calculateProgress();
+          this.previousAnswers = null;
+          this.deleteAllAnswerData();
+        }
+      }
+      if (this.pollVotingActionId) {
+        this.savingAnswers = true;
+        await this.patientPollService.updateQuestionnaireAnswers(
+          answersPrepared,
+          (error: boolean) => {
+            this.savingAnswers = false;
+            this.calculateProgress();
+          }
+        );
+      } else {
+        this.savingAnswers = true;
+        await this.patientPollService.createQuestionnaireAnswers(
+          answersPrepared,
+          (error: boolean, response: any) => {
+            if (!error) {
+              this.savingAnswers = false;
+              let poll = this.responseToData(response);
+              this.pollVotingActionId = poll.answerDetails.pollVotingActionId;
+              this.calculateProgress();
+            }
+          }
+        );
+      }
+      this.calculateNumberOfQuestions();
+    }
+    deleteAllAnswerData() {
+      this.questionnaire.answerDetails.completed = 0;
+      this.questionnaire.sections.forEach((section) => {
+        section.questions.forEach((question) => {
+          question.answer = null;
+          question.answerDetails = null;
+          question.selection = null;
+          question.questionData.options.forEach((element) => {
+            element.selected = null;
+          });
+        });
+      });
+      this.calculateProgress();
+    }
+  
+    scrollToTop() {
+      const scroll = document.getElementById("scroll");
+      scroll.scrollTo({
+        left: 0,
+        top: 0,
+        behavior: "smooth",
+      });
+    }
+  
+    checkTouchDevice() {
+      this.isTouchDevice = CoreUtils.isTouchEnabled();
+    }
+  
+    activateTab(index: number) {
+      this.activeTabIndex = index;
+      this.activeQnIndex = 0;
+    }
+  
+    back() {
+      this._location.back();
+    }
+  
+    onPressedBackButton(e) {
+      this.patientPollService.backToParent();
+    }
+  
+    isScrollable(element: any) {
+      const maxScroll = element.scrollHeight - element.clientHeight;
+      if (maxScroll > 0) {
+        return true;
+      }
+      return false;
+    }
+  
+    isHideSection(index: number) {
+      if (
+        index < (this.pageNo - 1) * this.itemsPerPage ||
+        index >= this.pageNo * this.itemsPerPage
+      ) {
+        return true;
+      }
+  
+      return false;
+    }
+  
+    configPages() {
+      this.totalSections = this.sections.length;
+      this.lastPageNo = Math.ceil(this.totalSections / this.itemsPerPage);
+    }
+  
+    next() {
+      if (this.pageNo < this.lastPageNo) {
+        this.pageNo++;
+        const activeTabIndex = (this.pageNo - 1) * this.itemsPerPage;
+        this.activateTab(activeTabIndex);
+      }
+    }
+  
+    prev() {
+      if (this.pageNo > 1) {
+        this.pageNo--;
+        const activeTabIndex = (this.pageNo - 1) * this.itemsPerPage;
+        this.activateTab(activeTabIndex);
+      }
+    }
+  
+    setItemsPerPage() {
+      this.itemsPerPage = 3;
+    }
+  
+    calculateSectionProgress(index: number, section: ISection) {
+      this.sectionPercentage[index] =
+        this.patientPollService.calculateSectionProgress(section);
+      return this.sectionPercentage[index];
+    }
+  
+    setSectionPercentage() {
+      this.questionnaire.sections.forEach((section, index) => {
+        this.calculateSectionProgress(index, section);
+      });
+    }
+  
+    getTotalQuestions(section: ISection) {
+      let questions = 0;
+      section.questions.forEach((question) => {
+        questions += question.questionData.options.length;
+      });
+  
+      return questions;
+    }
+  
+    getTotalAnswers(section: ISection) {
+      let answers = 0;
+      section.questions.forEach((question) => {
+        if (!question.answer) {
+          answers += 0;
+        } else {
+          answers += question.answer.length;
+        }
+      });
+  
+      return answers;
+    }
+
+    closeChecklistInfo(){
+      this.isChecklistInfoClosed = true;
+    }
+
+    getInpLimitTextColor(length:number){
+     var color:string="#636e72";
+      if(!length){         
+        return color;
+      }else if(this.getPercentage(length) >= 75 && this.getPercentage(length) < 90) {
+         color="#ffb347";
+      }
+      else if(this.getPercentage(length) >= 90 && this.getPercentage(length) < 100) {
+        color="#ee7601";
+      }
+      else if(this.getPercentage(length) >= 100){
+        color="#8b0000";
+      }
+      return color;      
+    }
+
+    getPercentage(partialValue:number):any {
+      return ((partialValue/this.maxInputLimit) * 100).toFixed(1);
+    } 
+    setInputLimit(){
+      if(this.isMaxInputEnabled){
+        this.questionnaire.sections.forEach((section) => {
+          section.questions.forEach((question) => {
+            if(question.pollQuestionType === 'INPUT' || question.pollQuestionType === 'TEXT'){
+              question.length = this.getInputValue(question).length;
+            }
+          });
+        });
+      }
+      else{
+        this.maxInputLimit=undefined;
+      }
+    }
+  }
+  
