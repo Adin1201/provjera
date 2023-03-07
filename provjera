@@ -1372,3 +1372,9 @@ import {
     }
   }
   
+HTML KOD:
+                    <div class="col-sm-12 padding-nullator quest-steps-buttomn-finish"
+                        *ngIf="questionnaire.pollType!=='CHECKLISTE'">
+                        <input type="button" [disabled]='savingAnswers' (click)="finishQuestionnaire()"
+                            mat-raised-button value="{{'EXAMINEE_QUESTIONNAIRE.FINISH_AND_SURVEY' | translate}}">
+                    </div>
